@@ -24,7 +24,7 @@ async def main():
         urls_to_ignore = set()
         ignore_list= Path('./ignore_list.txt')
         if ignore_list.is_file(): 
-            logger.info("Loading ingore list from ignore_list.txt")
+            logger.info("Loading ignore_list from ignore_list.txt")
             with open(ignore_list,'r') as file:
                 for line in file:
                     urls_to_ignore.add(line.strip()) 
@@ -33,30 +33,46 @@ async def main():
 
 
                     
+        tabs_list= Path('./tabs.txt')
+        if tabs_list.is_file():  
+            with open(tabs_list,'r') as file:
+                for line in file:
+                    page=await context.new_page()
+                    await page.goto(line.strip())
 
         while True:
+
+            logger.info("Waiting a bit for all pages to load")
+            await asyncio.sleep(10)
     
             new_links = [] 
 
             for page in context.pages:
 
+                page_title=await page.title() 
+
                 logger.info("Fetching all links present on page "+clean(page.url))
                 links = await page.evaluate("([]) => Array.from(document.links).map(item => [new URL(item.href, document.baseURI).href,item.textContent])", [])
-            
 
-                logger.info(f"Found {len(links)} links, checking against ignore set.")
+                logger.info(f"Found {len(links)} links, checking against ignore_list.")
                 with open(ignore_list,'a') as file:
                     for [url, text] in links:
                         url=clean(url)
 
                         if url not in urls_to_ignore:
-                            new_links.append({link_url:url, link_text:text,  page_url : page.url, page_title:page.title}) 
+                            new_links.append({'link_url':url, 'link_text':text,  'page_url' : page.url, 'page_title':page_title}) 
                             file.write(url+'\n')
                             urls_to_ignore.add(url)
                             logger.info(url+" is new, user will be alerted.")
             
             if len(new_links):
                 logger.info("New links found : "+json.dumps(new_links)) 
+            else:
+                logger.info("No new links") 
+
+            logger.info("Saving open tabs to load then next time the script starts") 
+            with open(tabs_list,'w') as file:
+                file.write('\n'.join([page.url for page in context.pages if page.url != 'about:blank' ]))
 
             wait_seconds = 20
             logger.info(f"Waiting {wait_seconds} seconds before checking for change")
@@ -67,9 +83,6 @@ async def main():
                 logger.info("Reloading "+clean(page.url))
                 await page.reload()
 
-            
-            logger.info("Waiting a bit for all pages to load")
-            await asyncio.sleep(10)
 
   
 def clean(url):    
