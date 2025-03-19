@@ -2,6 +2,11 @@
 
 This python script opens a few browser tabs with [playwright](https://playwright.dev/python/docs/library), refreshes them regularily, and alerts you if there's a new link on any of them. Usefull to immediately react to new online listings for jobs, appartments, etc..
  
+# How to run
+
+source  ~/anaconda3/bin/activate
+python run.py
+
 # Usage
 
 Install the required packages
