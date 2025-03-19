@@ -2,3 +2,4 @@ ignore_list.txt
 tabs.txt
 session_data
 *.log
+.env

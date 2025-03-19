@@ -4,6 +4,12 @@ from pathlib import Path
 import sys
 import logging
 import json
+import os
+import smtplib
+from email.mime.text import MIMEText
+from dotenv import load_dotenv
+load_dotenv()
+
 
 
 logger = logging.getLogger(__name__)
@@ -42,31 +48,63 @@ async def main():
 
         while True:
 
-            logger.info("Waiting a bit for all pages to load")
-            await asyncio.sleep(10)
-    
-            new_links = [] 
+            
+            total_new_links=0
+            pages_with_issues=0
+            mail_body=""
 
             for page in context.pages:
-
+                # Count how many links are here, if half are missing after refresh we'll assume something went wrong
+                count_before_reload=len(await get_links(page))
                 page_title=await page.title() 
+                page_url = page.url.split('?')[0]
 
-                logger.info("Fetching all links present on page "+clean(page.url))
-                links = await page.evaluate("([]) => Array.from(document.links).map(item => [new URL(item.href, document.baseURI).href,item.textContent])", [])
 
-                logger.info(f"Found {len(links)} links, checking against ignore_list.")
+                
+                logger.info("Reloading "+page_url)
+                await page.reload()
+
+                logger.info("Waiting a bit for the page to load")
+                await asyncio.sleep(5)
+
+
+                logger.info("Fetching all links present on page "+page_url)
+                links = await get_links(page)
+
+                new_links=[[url,text] for [url, text] in links if url not in urls_to_ignore]
+
                 with open(ignore_list,'a') as file:
-                    for [url, text] in links:
-                        url=clean(url)
+                    for [url, text] in new_links:  
+                        file.write(url+'\n')
+                        urls_to_ignore.add(url)
 
-                        if url not in urls_to_ignore:
-                            new_links.append({'link_url':url, 'link_text':text,  'page_url' : page.url, 'page_title':page_title}) 
-                            file.write(url+'\n')
-                            urls_to_ignore.add(url)
-                            logger.info(url+" is new, user will be alerted.")
-            
-            if len(new_links):
-                logger.info("New links found : "+json.dumps(new_links)) 
+                logger.info(f"Found {len(links)} of which {len(new_links)} are new.")
+
+                if len(links)<count_before_reload/2:
+                    logger.info(f"{page_title} ({page_url}) has very few links, alert needed")
+                    pages_with_issues+=1
+                    mail_body  += f'\n{page.title()} ({page.url}) had {count_before_reload} links before reloade and now only {len(links)}\n'
+                
+                elif page_url not in urls_to_ignore:
+                    logger.info(f"{page_title} ({page_url}) is new, user probably just opened it, let's add it and its links to ignore list")
+                    # The page we're on is new, we'll probably get many new links but there's no need to notify the user
+                    
+                    with open(ignore_list,'a') as file:
+                        file.write(page_url+'\n')
+                        urls_to_ignore.add(page_url)
+
+                elif len(new_links)>0 : 
+                    logger.info(f"{page_title} ({page_url}) has {len(new_links)} new links, user will be notified")
+                    list= '\n'.join(['- '+title+' : '+url for [url, title] in new_links])
+                    total_new_links+=len(new_links)
+                    mail_body+= f'{page.title()} ({page.url}) has {len(new_links)} new links : \n{list}\n\n'
+                else :
+                    logger.info(f"{page_title} ({page_url}) has {len(links)} links but nothing new")
+
+            if mail_body!="":
+                logger.info("New links found, sending email.") 
+                subject= "Jobalerts : {pages_with_issues} page issue" if pages_with_issues>0 else f'Jobalerts : {len(new_links)} new links found'
+                send_email(subject, mail_body)
             else:
                 logger.info("No new links") 
 
@@ -74,25 +112,30 @@ async def main():
             with open(tabs_list,'w') as file:
                 file.write('\n'.join([page.url for page in context.pages if page.url != 'about:blank' ]))
 
-            wait_seconds = 20
+            wait_seconds = 60*10
             logger.info(f"Waiting {wait_seconds} seconds before checking for change")
             await asyncio.sleep(wait_seconds)
 
-            logger.info("Reloading all pages")
-            for page in context.pages:
-                logger.info("Reloading "+clean(page.url))
-                await page.reload()
 
 
-  
-def clean(url):    
-    return url.split('?')[0]
-
-
-def log(text):    
-    url.split('?')[0]
-        
+def get_links(page):
+    return page.evaluate("([]) => Array.from(document.links).map(item => [new URL(item.href, document.baseURI).href.split('?')[0],item.textContent])", [])
  
+
+def send_email(subject, body): 
+    sender = os.getenv("USER_GMAIL_ADRESS")
+    password = os.getenv("USER_GMAIL_APP_PASSWORD").replace(" ", "")
+ 
+    msg = MIMEText(body)
+    msg['Subject'] = subject
+    msg['From'] = sender
+    msg['To'] = sender
+    with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp_server:
+       smtp_server.login(sender, password)
+       smtp_server.sendmail(sender, [sender], msg.as_string())
+    print("Message sent!")
+  
+
 logging.basicConfig(filename='jobalerts.log', level=logging.INFO)
 
 asyncio.run(main())
