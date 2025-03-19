@@ -19,6 +19,7 @@ Create a file named ".env" next to the run.py file, and set its content with you
 
 	USER_GMAIL_ADRESS="my-email-adress@gmail.com"
 	USER_GMAIL_APP_PASSWORD="aaaa bbbb cccc dddd"
+	TARGET_EMAIL="your@email.com"
 
 For the password, spaces are removed by the script, they don't matter. 
 

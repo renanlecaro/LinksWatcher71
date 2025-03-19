@@ -69,7 +69,7 @@ async def main():
                 logger.info(f"{len(links)} links found, checking how many are new")
                 new_links=[[url,text] for [url, text] in links if url not in urls_to_ignore]
 
-                logger.info(f"{new_links} new links found, marking them as known")
+                logger.info(f"{len(new_links)} new links found, marking them as known")
                 with open(known_links,'a') as file:
                     for [url, text] in new_links:  
                         file.write(url+'\n')
@@ -78,7 +78,7 @@ async def main():
                 if len(links)<count_before_reload/2:
                     logger.info(f"{page_title} ({page_url}) has very few links, alert needed")
                     pages_with_issues+=1
-                    mail_body  += f'\n{page.title()} ({page.url}) had {count_before_reload} links before reloade and now only {len(links)}\n'
+                    mail_body  += f'\n{page_title} ({page.url}) had {count_before_reload} links before reloade and now only {len(links)}\n'
                 
                 elif page_url not in urls_to_ignore:
                     logger.info(f"{page_title} ({page_url}) is new, user probably just opened it, let's add it and its links to ignore list")
@@ -92,7 +92,7 @@ async def main():
                     logger.info(f"{page_title} ({page_url}) has {len(new_links)} new links, user will be notified")
                     list= '\n'.join(['- '+title+' : '+url for [url, title] in new_links])
                     total_new_links+=len(new_links)
-                    mail_body+= f'{page.title()} ({page.url}) has {len(new_links)} new links : \n{list}\n\n'
+                    mail_body+= f'{page_title} ({page.url}) has {len(new_links)} new links : \n{list}\n\n'
                 else :
                     logger.info(f"{page_title} ({page_url}) has {len(links)} links but nothing new")
 
@@ -114,21 +114,23 @@ async def main():
 
 
 def get_links(page):
-    return page.evaluate("([]) => Array.from(document.links).map(item => [new URL(item.href, document.baseURI).href.split('?')[0],item.textContent])", [])
+    return page.evaluate("([]) => Array.from(document.links).map(item => [new URL(item.href, document.baseURI).href.split('?')[0],item.textContent.trim()])", [])
  
 
 def send_email(subject, body): 
     sender = os.getenv("USER_GMAIL_ADRESS")
+    recipient = os.getenv("TARGET_EMAIL")
     password = os.getenv("USER_GMAIL_APP_PASSWORD").replace(" ", "")
- 
+    
     msg = MIMEText(body)
     msg['Subject'] = subject
     msg['From'] = sender
-    msg['To'] = sender
+    msg['To'] = recipient
     with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp_server:
        smtp_server.login(sender, password)
-       smtp_server.sendmail(sender, [sender], msg.as_string())
+       smtp_server.sendmail(sender, [recipient], msg.as_string())
     print("Message sent!")
-  
+
 
 asyncio.run(main())
+
