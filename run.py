@@ -76,9 +76,9 @@ async def main():
                         urls_to_ignore.add(url)
 
                 if len(links)<count_before_reload/2:
-                    logger.info(f"{page_title} ({page_url}) has very few links, alert needed")
+                    logger.info(f"{page_title} has very few links, alert needed")
                     pages_with_issues+=1
-                    mail_body  += f'\n{page_title} ({page.url}) had {count_before_reload} links before reloade and now only {len(links)}\n'
+                    mail_body  += f'\n{page_title} had {count_before_reload} links before reloade and now only {len(links)}\n'
                 
                 elif page_url not in urls_to_ignore:
                     logger.info(f"{page_title} ({page_url}) is new, user probably just opened it, let's add it and its links to ignore list")
@@ -89,12 +89,12 @@ async def main():
                         urls_to_ignore.add(page_url)
 
                 elif len(new_links)>0 : 
-                    logger.info(f"{page_title} ({page_url}) has {len(new_links)} new links, user will be notified")
+                    logger.info(f"{page_title} has {len(new_links)} new links, user will be notified")
                     list= '\n'.join(['- '+title+' : '+url for [url, title] in new_links])
                     total_new_links+=len(new_links)
-                    mail_body+= f'{page_title} ({page.url}) has {len(new_links)} new links : \n{list}\n\n'
+                    mail_body+= f'{page_title} has {len(new_links)} new links : \n{list}\n\n'
                 else :
-                    logger.info(f"{page_title} ({page_url}) has {len(links)} links but nothing new")
+                    logger.info(f"{page_title} has {len(links)} links but nothing new")
 
             if mail_body!="":
                 logger.info("New links found, sending email.") 
