@@ -10,35 +10,33 @@ from email.mime.text import MIMEText
 from dotenv import load_dotenv
 load_dotenv()
 
-
-
+# Log to the stdout and to a file, with the time on each line
 logger = logging.getLogger(__name__)
-
-
+logging.basicConfig(filename='jobalerts.log', level=logging.INFO)
 handler = logging.StreamHandler(sys.stdout)
 handler.setLevel(logging.DEBUG)
 formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
 handler.setFormatter(formatter)
 logger.addHandler(handler)
 
+
 async def main():
-    async with async_playwright() as p: 
+    async with async_playwright() as p:  
+
         logger.info("Starting playwright context")
-        # restart the same browser session every time
         context = await p.chromium.launch_persistent_context("./session_data", headless=False, timeout=0)
         
+        logger.info("Loading known links from known_links.txt if it exists")
         urls_to_ignore = set()
-        ignore_list= Path('./ignore_list.txt')
-        if ignore_list.is_file(): 
-            logger.info("Loading ignore_list from ignore_list.txt")
-            with open(ignore_list,'r') as file:
+        known_links= Path('./known_links.txt')
+        if known_links.is_file(): 
+            with open(known_links,'r') as file:
                 for line in file:
-                    urls_to_ignore.add(line.strip()) 
-        else:
-            logger.info("No ignore_list.txt yet, this will be populated once the pages are parsed")
+                    urls_to_ignore.add(line.strip())
 
 
-                    
+        
+        logger.info("Loading opened tabs from tabs.txt if it exists")
         tabs_list= Path('./tabs.txt')
         if tabs_list.is_file():  
             with open(tabs_list,'r') as file:
@@ -47,38 +45,35 @@ async def main():
                     await page.goto(line.strip())
 
         while True:
-
-            
             total_new_links=0
             pages_with_issues=0
             mail_body=""
 
             for page in context.pages:
-                # Count how many links are here, if half are missing after refresh we'll assume something went wrong
+
+                logger.info("Counting links already on page, to notify user of any large drop")
                 count_before_reload=len(await get_links(page))
                 page_title=await page.title() 
                 page_url = page.url.split('?')[0]
 
 
-                
                 logger.info("Reloading "+page_url)
                 await page.reload()
 
                 logger.info("Waiting a bit for the page to load")
                 await asyncio.sleep(5)
 
-
-                logger.info("Fetching all links present on page "+page_url)
+                logger.info("Fetching all links present on "+page_url)
                 links = await get_links(page)
 
+                logger.info(f"{len(links)} links found, checking how many are new")
                 new_links=[[url,text] for [url, text] in links if url not in urls_to_ignore]
 
-                with open(ignore_list,'a') as file:
+                logger.info(f"{new_links} new links found, marking them as known")
+                with open(known_links,'a') as file:
                     for [url, text] in new_links:  
                         file.write(url+'\n')
                         urls_to_ignore.add(url)
-
-                logger.info(f"Found {len(links)} of which {len(new_links)} are new.")
 
                 if len(links)<count_before_reload/2:
                     logger.info(f"{page_title} ({page_url}) has very few links, alert needed")
@@ -89,7 +84,7 @@ async def main():
                     logger.info(f"{page_title} ({page_url}) is new, user probably just opened it, let's add it and its links to ignore list")
                     # The page we're on is new, we'll probably get many new links but there's no need to notify the user
                     
-                    with open(ignore_list,'a') as file:
+                    with open(known_links,'a') as file:
                         file.write(page_url+'\n')
                         urls_to_ignore.add(page_url)
 
@@ -103,7 +98,7 @@ async def main():
 
             if mail_body!="":
                 logger.info("New links found, sending email.") 
-                subject= "Jobalerts : {pages_with_issues} page issue" if pages_with_issues>0 else f'Jobalerts : {len(new_links)} new links found'
+                subject= "LinksWatcher71 : {pages_with_issues} page issue" if pages_with_issues>0 else f'LinksWatcher71 : {len(new_links)} new links found'
                 send_email(subject, mail_body)
             else:
                 logger.info("No new links") 
@@ -135,7 +130,5 @@ def send_email(subject, body):
        smtp_server.sendmail(sender, [sender], msg.as_string())
     print("Message sent!")
   
-
-logging.basicConfig(filename='jobalerts.log', level=logging.INFO)
 
 asyncio.run(main())
